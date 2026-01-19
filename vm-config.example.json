@@ -1,0 +1,18 @@
+{
+  "resource_group": "my-resource-group",
+  "location": "eastus",
+  "vm_count": 10,
+  "vm_name_prefix": "vm-",
+  "vm_size": "Standard_B2s",
+  "image": "Ubuntu2204",
+  "admin_username": "admin",
+  "admin_password": "CHANGE_ME_SecurePassword123!",
+  "os_disk_size_gb": 30,
+  "vnet_name": "",
+  "subnet_name": "",
+  "nsg_name": "",
+  "public_ip": true,
+  "tags": {
+    "pool": "pool001"
+  }
+}
