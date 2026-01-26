@@ -96,9 +96,78 @@ The script is idempotent. If a VM with the same name already exists, its creatio
 [INFO] Creating VM: lab-vm-002
 ```
 
+## VM User Configuration
+
+After deploying VMs, you can configure student/user accounts with sudo access using the `configure-vms.sh` script.
+
+### Prerequisites
+
+- **sshpass** installed (`brew install hudochenkov/sshpass/sshpass` on macOS or `apt install sshpass` on Ubuntu)
+- VMs deployed and running with public IPs
+
+### Quick Start
+
+1. **Copy the example user config file:**
+   ```bash
+   cp vm-users.example.json vm-users.local.json
+   ```
+
+2. **Edit the config file with your user definitions:**
+   ```json
+   {
+     "deployment_config": "./.cs318.sp26.local.json",
+     "users": [
+       {
+         "vm_name": "vm-001",
+         "username": "student1",
+         "password": "StudentP@ss1!"
+       },
+       {
+         "vm_name": "vm-002",
+         "username": "student2",
+         "password": "StudentP@ss2!"
+       }
+     ]
+   }
+   ```
+
+3. **Run the configuration script:**
+   ```bash
+   ./configure-vms.sh vm-users.local.json
+   ```
+
+### User Configuration Options
+
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `deployment_config` | Yes | Path to the VM deployment config (contains admin credentials) |
+| `users` | Yes | Array of user definitions |
+| `users[].vm_name` | Yes | Name of the target VM (e.g., `vm-001`) |
+| `users[].username` | Yes | Username to create |
+| `users[].password` | Yes | Password for the user |
+
+### Idempotent Behavior
+
+The configuration script is idempotent:
+- If a user already exists, their password will be updated and sudo access verified
+- Running the script multiple times is safe
+
+```
+[INFO] Configuring user 'student1' on VM 'vm-001' (20.1.2.3)...
+[INFO]   User 'student1' already exists. Updating password and ensuring sudo access...
+[INFO]   SUCCESS: User 'student1' is configured with sudo access.
+```
+
+### Sudo Access
+
+Users created by this script are added to the `sudo` group, which provides standard Ubuntu sudo behavior:
+- Users can run commands with `sudo`
+- Password is required for sudo commands
+- Suitable for educational environments where students need to practice Linux administration
+
 ## Security Notes
 
-⚠️ **Important:** The `vm-config.local.json` file contains sensitive credentials and is git-ignored by default. Never commit this file to version control.
+⚠️ **Important:** The `*.local.json` config files contain sensitive credentials and are git-ignored by default. Never commit these files to version control.
 
 For production use, consider:
 - Using Azure Key Vault for secrets

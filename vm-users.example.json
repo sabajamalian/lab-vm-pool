@@ -1,0 +1,20 @@
+{
+  "deployment_config": "./vm-config.local.json",
+  "users": [
+    {
+      "vm_name": "vm-001",
+      "username": "student1",
+      "password": ""
+    },
+    {
+      "vm_name": "vm-002",
+      "username": "student2",
+      "password": ""
+    },
+    {
+      "vm_name": "vm-003",
+      "username": "student3",
+      "password": ""
+    }
+  ]
+}

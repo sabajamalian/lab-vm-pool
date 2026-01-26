@@ -46,8 +46,6 @@ fi
 
 # Read configuration
 RESOURCE_GROUP=$(jq -r '.resource_group' "$CONFIG_FILE")
-LOCATION=$(jq -r '.location' "$CONFIG_FILE")
-VM_COUNT=$(jq -r '.vm_count' "$CONFIG_FILE")
 VM_NAME_PREFIX=$(jq -r '.vm_name_prefix' "$CONFIG_FILE")
 VM_SIZE=$(jq -r '.vm_size' "$CONFIG_FILE")
 IMAGE=$(jq -r '.image' "$CONFIG_FILE")
@@ -60,19 +58,17 @@ NSG_NAME=$(jq -r '.nsg_name // ""' "$CONFIG_FILE")
 PUBLIC_IP=$(jq -r '.public_ip // true' "$CONFIG_FILE")
 TAGS=$(jq -r '.tags // {}' "$CONFIG_FILE")
 
+# Read locations array
+LOCATIONS_COUNT=$(jq '.locations | length' "$CONFIG_FILE")
+
 # Validate required parameters
 if [[ -z "$RESOURCE_GROUP" || "$RESOURCE_GROUP" == "null" ]]; then
     log_error "resource_group is required in config file"
     exit 1
 fi
 
-if [[ -z "$LOCATION" || "$LOCATION" == "null" ]]; then
-    log_error "location is required in config file"
-    exit 1
-fi
-
-if [[ -z "$VM_COUNT" || "$VM_COUNT" == "null" || "$VM_COUNT" -lt 1 ]]; then
-    log_error "vm_count must be a positive integer"
+if [[ -z "$LOCATIONS_COUNT" || "$LOCATIONS_COUNT" == "null" || "$LOCATIONS_COUNT" -lt 1 ]]; then
+    log_error "locations array must contain at least one location"
     exit 1
 fi
 
@@ -91,10 +87,22 @@ if [[ -z "$ADMIN_PASSWORD" || "$ADMIN_PASSWORD" == "null" ]]; then
     exit 1
 fi
 
+# Calculate total VM count across all locations
+TOTAL_VM_COUNT=0
+for i in $(seq 0 $((LOCATIONS_COUNT - 1))); do
+    count=$(jq -r ".locations[$i].vm_count" "$CONFIG_FILE")
+    TOTAL_VM_COUNT=$((TOTAL_VM_COUNT + count))
+done
+
 log_info "Configuration loaded from: $CONFIG_FILE"
 log_info "Resource Group: $RESOURCE_GROUP"
-log_info "Location: $LOCATION"
-log_info "VM Count: $VM_COUNT"
+log_info "Locations: $LOCATIONS_COUNT"
+for i in $(seq 0 $((LOCATIONS_COUNT - 1))); do
+    loc_name=$(jq -r ".locations[$i].name" "$CONFIG_FILE")
+    loc_count=$(jq -r ".locations[$i].vm_count" "$CONFIG_FILE")
+    log_info "  - $loc_name: $loc_count VM(s)"
+done
+log_info "Total VM Count: $TOTAL_VM_COUNT"
 log_info "VM Name Prefix: $VM_NAME_PREFIX"
 log_info "VM Size: $VM_SIZE"
 log_info "Image: $IMAGE"
@@ -116,14 +124,15 @@ vm_exists() {
 create_vm() {
     local vm_name=$1
     local vm_index=$2
+    local location=$3
 
-    log_info "Creating VM: $vm_name"
+    log_info "Creating VM: $vm_name in $location"
 
     # Build the az vm create command
     local cmd="az vm create \
         --resource-group \"$RESOURCE_GROUP\" \
         --name \"$vm_name\" \
-        --location \"$LOCATION\" \
+        --location \"$location\" \
         --image \"$IMAGE\" \
         --size \"$VM_SIZE\" \
         --admin-username \"$ADMIN_USERNAME\" \
@@ -166,31 +175,41 @@ create_vm() {
 }
 
 # Main deployment loop
-log_info "Starting deployment of $VM_COUNT VM(s)..."
+log_info "Starting deployment of $TOTAL_VM_COUNT VM(s) across $LOCATIONS_COUNT location(s)..."
 
 created_count=0
 skipped_count=0
 failed_count=0
+global_vm_index=1
 
-for i in $(seq 1 "$VM_COUNT"); do
-    vm_name="${VM_NAME_PREFIX}-$(printf '%03d' $i)"
+for loc_idx in $(seq 0 $((LOCATIONS_COUNT - 1))); do
+    LOCATION=$(jq -r ".locations[$loc_idx].name" "$CONFIG_FILE")
+    VM_COUNT=$(jq -r ".locations[$loc_idx].vm_count" "$CONFIG_FILE")
 
-    if vm_exists "$vm_name"; then
-        log_warn "VM '$vm_name' already exists. Skipping..."
-        ((skipped_count++))
-    else
-        if create_vm "$vm_name" "$i"; then
-            ((created_count++))
+    log_info "Processing location: $LOCATION ($VM_COUNT VMs)"
+
+    for i in $(seq 1 "$VM_COUNT"); do
+        vm_name="${VM_NAME_PREFIX}-$(printf '%03d' $global_vm_index)"
+
+        if vm_exists "$vm_name"; then
+            log_warn "VM '$vm_name' already exists. Skipping..."
+            ((skipped_count++))
         else
-            ((failed_count++))
+            if create_vm "$vm_name" "$global_vm_index" "$LOCATION"; then
+                ((created_count++))
+            else
+                ((failed_count++))
+            fi
         fi
-    fi
+        ((global_vm_index++))
+    done
 done
 
 # Summary
 echo ""
 log_info "========== Deployment Summary =========="
-log_info "Total VMs requested: $VM_COUNT"
+log_info "Total VMs requested: $TOTAL_VM_COUNT"
+log_info "Locations: $LOCATIONS_COUNT"
 log_info "VMs created: $created_count"
 log_info "VMs skipped (already exist): $skipped_count"
 if [[ $failed_count -gt 0 ]]; then
